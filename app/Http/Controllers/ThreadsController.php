@@ -2,46 +2,31 @@
 
 namespace App\Http\Controllers;
 
-use App\Channel; 
+use App\Channel;
 use App\Thread;
 use Illuminate\Http\Request;
+use App\Filters\ThreadFilters;
 
 class ThreadsController extends Controller
 {
-
-
     public function __construct()
     {
-        $this->middleware('auth')->except(['index','show']); 
+        $this->middleware('auth')->except(['index','show']);
     }
-
 
     /**
      * Display a listing of the resource.
      *
      * @return \Illuminate\Http\Response
      */
-    public function index(Channel $channel)
+    public function index(Channel $channel, ThreadFilters $filters)
     {
-        if($channel->exists){
+        $threads = $this->getThreads($channel, $filters);
 
-            $threads = $channel->threads()->latest(); 
-
-        }else{
-
-            $threads = Thread::latest(); 
-
+        if (request()->wantsJson()) {
+            return $threads;
         }
-
-        if($username = request('by')){
-
-            $user = \App\User::where('name', $username)->firstOrFail(); 
-
-            $threads->where('user_id', $user->id); 
-        }
-
-        $threads = $threads->get(); 
-
+        
         return view('threads.index', compact('threads'));
     }
 
@@ -67,14 +52,14 @@ class ThreadsController extends Controller
             'title' => 'required',
             'body' => 'required',
             'channel_id' => 'required|exists:channels,id'
-        ]); 
+        ]);
 
         $thread = Thread::create([
             'user_id' => auth()->id(),
-            'channel_id' => request('channel_id'), 
-            'title' => request('title'), 
+            'channel_id' => request('channel_id'),
+            'title' => request('title'),
             'body' => request('body')
-        ]); 
+        ]);
 
         return redirect($thread->path());
     }
@@ -87,7 +72,10 @@ class ThreadsController extends Controller
      */
     public function show($channelId, Thread $thread)
     {
-        return view('threads.show', compact('thread')); 
+        return view('threads.show', [
+         'thread' => $thread,
+         'replies' => $thread->replies()->paginate(20)
+        ]);
     }
 
     /**
@@ -122,5 +110,15 @@ class ThreadsController extends Controller
     public function destroy(Thread $thread)
     {
         //
+    }
+
+    protected function getThreads(Channel $channel, ThreadFilters $filters)
+    {
+        $threads = Thread::latest()->filter($filters);
+
+        if ($channel->exists) {
+            $threads->where('channel_id', $channel->id);
+        }
+        return $threads->get();
     }
 }
